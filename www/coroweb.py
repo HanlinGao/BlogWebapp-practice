@@ -1,13 +1,17 @@
 import asyncio, os, inspect, logging, functools
-
+import types
 from urllib import parse
+
 from aiohttp import web
 
+## apis是处理分页的模块,代码在本章页面末尾,请将apis.py放在www下以防报错
+## APIError 是指API调用时发生逻辑错误
 from apis import APIError
 
 
+## 编写装饰函数 @get()
 def get(path):
-    # Define decorator @get('/path')
+    ## Define decorator @get('/path')
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kw):
@@ -18,8 +22,9 @@ def get(path):
     return decorator
 
 
+## 编写装饰函数 @post()
 def post(path):
-    # Define decorator @post('/path')
+    ## Define decorator @post('/path')
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kw):
@@ -30,7 +35,7 @@ def post(path):
     return decorator
 
 
-# RequestHandler related functions
+## 以下是RequestHandler需要定义的一些函数
 def get_required_kw_args(fn):
     args = []
     params = inspect.signature(fn).parameters
@@ -73,12 +78,12 @@ def has_request_arg(fn):
             continue
         if found and (param.kind != inspect.Parameter.VAR_POSITIONAL and param.kind != inspect.Parameter.KEYWORD_ONLY and param.kind != inspect.Parameter.VAR_KEYWORD):
             raise ValueError('request parameter must be the last named parameter in function: %s%s' % (fn.__name__, str(sig)))
-
     return found
 
 
-# RequestHandler, get needed parameters from URL function
+## 定义RequestHandler从URL函数中分析其需要接受的参数
 class RequestHandler(object):
+
     def __init__(self, app, fn):
         self._app = app
         self._func = fn
@@ -93,20 +98,18 @@ class RequestHandler(object):
         if self._has_var_kw_arg or self._has_named_kw_args or self._required_kw_args:
             if request.method == 'POST':
                 if not request.content_type:
-                    return web.HTTPBadRequest(text='Missing content-Type.')
+                    return web.HTTPBadRequest(text='Missing Content-Type.')
                 ct = request.content_type.lower()
-                if ct.startwith('application/json'):
+                if ct.startswith('application/json'):
                     params = await request.json()
                     if not isinstance(params, dict):
                         return web.HTTPBadRequest(text='JSON body must be object.')
                     kw = params
-
-                elif ct.startwith('application/x-wwww-form-urlencoded') or ct.startwith('multipart/form-data'):
+                elif ct.startswith('application/x-www-form-urlencoded') or ct.startswith('multipart/form-data'):
                     params = await request.post()
                     kw = dict(**params)
                 else:
                     return web.HTTPBadRequest(text='Unsupported Content-Type: %s' % request.content_type)
-
             if request.method == 'GET':
                 qs = request.query_string
                 if qs:
@@ -117,27 +120,24 @@ class RequestHandler(object):
             kw = dict(**request.match_info)
         else:
             if not self._has_var_kw_arg and self._named_kw_args:
-                # remove all unnamed kw:
+                # remove all unamed kw:
                 copy = dict()
                 for name in self._named_kw_args:
                     if name in kw:
                         copy[name] = kw[name]
                 kw = copy
-            # check named arg
+            # check named arg:
             for k, v in request.match_info.items():
                 if k in kw:
                     logging.warning('Duplicate arg name in named arg and kw args: %s' % k)
                 kw[k] = v
-
         if self._has_request_arg:
             kw['request'] = request
-
         # check required kw:
         if self._required_kw_args:
             for name in self._required_kw_args:
                 if not name in kw:
                     return web.HTTPBadRequest(text='Missing argument: %s' % name)
-
         logging.info('call with args: %s' % str(kw))
         try:
             r = await self._func(**kw)
@@ -146,28 +146,34 @@ class RequestHandler(object):
             return dict(error=e.error, data=e.data, message=e.message)
 
 
+## 定义add_static函数，来注册static文件夹下的文件
 def add_static(app):
-    # used to register files under directory www/static
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
     app.router.add_static('/static/', path)
     logging.info('add static %s => %s' % ('/static/', path))
 
 
+## 定义add_route函数，来注册一个URL处理函数
 def add_route(app, fn):
-    # used to register a URL process function
     method = getattr(fn, '__method__', None)
     path = getattr(fn, '__route__', None)
     if path is None or method is None:
         raise ValueError('@get or @post not defined in %s.' % str(fn))
-    if not asyncio.iscoroutinefunction(fn) and not inspect.isgeneratorfunction(fn):
-        fn = asyncio.coroutines(fn)
+    # asyncio.coroutine已经不支持了，这里删除好像对代码没有影响
+    # 尝试了自定义一个toCoroutine，在其中async def，但是会造成runtime error: index was never awaited
+    # 最终尝试types.coroutine,这个在官方文档中也能看见是把一个生成器函数转换为一个协程函数
+    # if not asyncio.iscoroutinefunction(fn) and not inspect.isgeneratorfunction(fn):
+    #     fn = asyncio.coroutine(fn)
 
-    logging.info('add routes %s %s => %s(%s)' % (method, path, fn.__name__, ','.join(inspect.signature(fn).parameters.keys())))
+    if not asyncio.iscoroutinefunction(fn) and not inspect.isgeneratorfunction(fn):
+        fn = types.coroutine(fn)
+
+    logging.info('add route %s %s => %s(%s)' % (method, path, fn.__name__, ', '.join(inspect.signature(fn).parameters.keys())))
     app.router.add_route(method, path, RequestHandler(app, fn))
 
 
+## 定义add_routes函数，自动把handler模块的所有符合条件的URL函数注册了
 def add_routes(app, module_name):
-    # register all functions in [module_name] that satisfy requirements
     n = module_name.rfind('.')
     if n == (-1):
         mod = __import__(module_name, globals(), locals())
