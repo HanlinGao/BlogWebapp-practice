@@ -4,7 +4,8 @@
 Models for user, blog, comment
 '''
 
-import time, uuid
+import time
+import uuid
 from orm import Model, StringField, BooleanField, FloatField, TextField
 
 
@@ -38,7 +39,7 @@ class Blog(Model):
 
 
 class Comment(Model):
-    __table__ = 'comment'
+    __table__ = 'comments'
 
     id = StringField(primary_key=True, default=next_id, ddl='varchar(50)')
     blog_id = StringField(ddl='varchar(50)')

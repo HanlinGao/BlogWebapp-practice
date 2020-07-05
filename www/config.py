@@ -1,5 +1,6 @@
 import config_default
 
+
 class Dict(dict):
     '''
     simple dict but support access as x.y style
@@ -38,7 +39,9 @@ def toDict(d):
         D[k] = toDict(v) if isinstance(v, dict) else v
     return D
 
+
 configs = config_default.configs
+
 
 try:
     import config_override
