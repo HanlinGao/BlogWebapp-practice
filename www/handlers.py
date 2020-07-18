@@ -108,7 +108,7 @@ async def get_blog(id):
 
 # 处理注册页面URL
 @get('/register')
-def register():
+async def register():
     return {
         '__template__': 'register.html'
     }
@@ -116,7 +116,7 @@ def register():
 
 # 处理登录页面URL
 @get('/signin')
-def signin():
+async def signin():
     return {
         '__template__': 'signin.html'
     }

@@ -8,7 +8,8 @@ async def test(loop):
 
     u = User(name='Test', email='test@qq.com', passwd='1234567890', image='about:blank')
     await u.save()
-
+    u = User(name='admin', email='admin@qq.com', passwd='1234567890', image='about:blank', admin=1)
+    await u.save()
     # without this, an error "Runtime Error, Event loop is closed will occur"
     orm.__pool.close()
     await orm.__pool.wait_closed()
